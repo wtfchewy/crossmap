@@ -1,0 +1,5 @@
+bin/
+/crossmap
+*.test
+dist/
+*.log
