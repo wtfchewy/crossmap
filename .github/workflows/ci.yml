@@ -1,0 +1,72 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: go mod tidy is clean
+        run: go mod tidy && git diff --exit-code go.mod go.sum
+      - uses: golangci/golangci-lint-action@v6
+        with:
+          version: v2.1.0
+      - name: golangci-lint (darwin)
+        run: GOOS=darwin golangci-lint run ./...
+      - name: builds for every GOOS we claim
+        run: |
+          for os in darwin linux; do GOOS=$os go build ./... ; done
+      # Not golang/govulncheck-action: its own setup-go ignores go.mod's
+      # toolchain line and scans the older Go.
+      - name: govulncheck
+        run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      # The integration suite stands up a fake usbmuxd, an agent and a host
+      # in one process. Tests that need real hardware, a live usbmuxd or
+      # dns-sd skip themselves, so the Linux runner still exercises the
+      # protocol and transport layers.
+      - name: unit + integration
+        run: go test -race -count=1 -timeout 15m ./...
+
+  # The libimobiledevice compatibility test only means something when a real
+  # libusbmuxd client is present to drive the host socket.
+  interop:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: install libimobiledevice
+        run: brew install libimobiledevice
+      - name: idevice_id drives the crossmap host socket
+        run: go test -count=1 -run TestRealLibimobiledeviceClient -v ./internal/integration/

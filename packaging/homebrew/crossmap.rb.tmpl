@@ -1,0 +1,52 @@
+class Crossmap < Formula
+  desc "Use an iPhone plugged into another Mac, across networks"
+  homepage "https://github.com/wtfchewy/crossmap"
+  url "@URL@"
+  sha256 "@SHA256@"
+  license "BSD-3-Clause"
+  head "https://github.com/wtfchewy/crossmap.git", branch: "main"
+
+  depends_on "go" => :build
+  depends_on :macos
+
+  def install
+    ldflags = %W[
+      -s -w
+      -X main.version=#{version}
+    ]
+    system "go", "build", *std_go_args(ldflags: ldflags), "./cmd/crossmap"
+  end
+
+  def caveats
+    <<~EOS
+      Create a shared key, then run `crossmap join <key>` on the other Mac:
+        crossmap init
+
+      On the Mac the iPhone is plugged into:
+        brew services start crossmap-agent
+      or run it directly:
+        crossmap agent
+
+      On the Mac with Xcode, for libimobiledevice tools:
+        crossmap host --agent <other-mac>
+        export USBMUXD_SOCKET_ADDRESS=UNIX:$HOME/.config/crossmap/usbmuxd.sock
+
+      For Xcode and devicectl, which need the system socket:
+        sudo crossmap host --agent <other-mac> --system
+
+      Installing .ipa files also needs:
+        brew install ideviceinstaller
+
+      Check a machine's setup with:
+        crossmap doctor
+    EOS
+  end
+
+  test do
+    assert_match version.to_s, shell_output("#{bin}/crossmap version")
+    # doctor exits non-zero when a check fails (no key on a fresh machine),
+    # but it must still produce its report.
+    output = shell_output("#{bin}/crossmap doctor 2>&1", 1)
+    assert_match "usbmuxd socket", output
+  end
+end
