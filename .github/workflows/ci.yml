@@ -23,9 +23,9 @@ jobs:
           go-version-file: go.mod
       - name: go mod tidy is clean
         run: go mod tidy && git diff --exit-code go.mod go.sum
-      - uses: golangci/golangci-lint-action@v6
+      - uses: golangci/golangci-lint-action@v9
         with:
-          version: v2.1.0
+          version: v2.15.0
       - name: golangci-lint (darwin)
         run: GOOS=darwin golangci-lint run ./...
       - name: builds for every GOOS we claim
