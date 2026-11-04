@@ -48,14 +48,16 @@ type Discovery interface {
 
 // Agent serves Crossmap links.
 type Agent struct {
-	cfg    Config
-	log    *slog.Logger
-	mux    *usbmux.Client
-	reg    *devices.Set
-	info   wire.AgentInfo
-	ln     net.Listener
-	closed chan struct{}
-	once   sync.Once
+	cfg  Config
+	log  *slog.Logger
+	mux  *usbmux.Client
+	reg  *devices.Set
+	info wire.AgentInfo
+
+	// mu guards ln, which Run assigns once it has bound and Addr reads
+	// from whatever goroutine asks.
+	mu sync.RWMutex
+	ln net.Listener
 }
 
 // New builds an Agent from cfg.
@@ -80,7 +82,6 @@ func New(cfg Config) (*Agent, error) {
 			OS:       runtime.GOOS,
 			Version:  cfg.Version,
 		},
-		closed: make(chan struct{}),
 	}, nil
 }
 
@@ -91,7 +92,9 @@ func (a *Agent) Run(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("agent: listen on %s: %w", a.cfg.Listen, err)
 	}
+	a.mu.Lock()
 	a.ln = ln
+	a.mu.Unlock()
 	a.log.Info("agent listening", "addr", ln.Addr().String(), "usbmuxd", a.mux.Socket())
 
 	go a.watchDevices(ctx)
@@ -120,10 +123,13 @@ func (a *Agent) Run(ctx context.Context) error {
 // Addr reports the address the agent is actually bound to, which differs from
 // Config.Listen when port 0 was requested.
 func (a *Agent) Addr() string {
-	if a.ln == nil {
+	a.mu.RLock()
+	ln := a.ln
+	a.mu.RUnlock()
+	if ln == nil {
 		return a.cfg.Listen
 	}
-	return a.ln.Addr().String()
+	return ln.Addr().String()
 }
 
 // watchDevices keeps the registry in step with usbmuxd, reconnecting if the
