@@ -1,27 +1,42 @@
 #!/usr/bin/env bash
 # Render the Homebrew formula for a release.
 #
-#   scripts/render-formula.sh dist/checksums.txt 1.2.3
+#   scripts/render-formula.sh <version> [outdir]
+#   scripts/render-formula.sh 1.2.3 dist
 #
-# Writes dist/crossmap.rb with the source tarball's URL and checksum filled
-# in. The formula builds from source, so it points at the tag's tarball
-# rather than at a release binary.
+# Reads the per-architecture checksums from the release's checksums.txt and
+# writes <outdir>/crossmap.rb. The formula installs the prebuilt binaries, so
+# it needs no Go toolchain on the installing machine.
 set -euo pipefail
 
-checksums=${1:?usage: render-formula.sh <checksums.txt> <version>}
-version=${2:?usage: render-formula.sh <checksums.txt> <version>}
+version=${1:?usage: render-formula.sh <version> [outdir]}
+version=${version#v}
+outdir=${2:-dist}
 repo=${REPO:-wtfchewy/crossmap}
-template=$(dirname "$0")/../packaging/homebrew/crossmap.rb.tmpl
-out=$(dirname "$checksums")/crossmap.rb
+template=$(cd "$(dirname "$0")/.." && pwd)/packaging/homebrew/crossmap.rb.tmpl
+out=$outdir/crossmap.rb
 
-url="https://github.com/${repo}/archive/refs/tags/v${version}.tar.gz"
+mkdir -p "$outdir"
 
-# GitHub's source tarball is generated on demand, so its checksum is not in
-# goreleaser's checksums file; fetch and hash it.
-tmp=$(mktemp)
-trap 'rm -f "$tmp"' EXIT
-curl -fsSL "$url" -o "$tmp"
-sha=$(shasum -a 256 "$tmp" | cut -d' ' -f1)
+checksums=$outdir/checksums.txt
+if [ ! -s "$checksums" ]; then
+  curl -fsSL "https://github.com/${repo}/releases/download/v${version}/checksums.txt" -o "$checksums"
+fi
 
-sed -e "s|@URL@|${url}|" -e "s|@SHA256@|${sha}|" "$template" > "$out"
-echo "wrote $out (v${version}, sha256 ${sha})"
+sha_for() {
+  awk -v want="crossmap_${version}_darwin_$1.tar.gz" '$2 == want { print $1 }' "$checksums"
+}
+
+arm64=$(sha_for arm64)
+amd64=$(sha_for amd64)
+: "${arm64:?no arm64 checksum in $checksums}"
+: "${amd64:?no amd64 checksum in $checksums}"
+
+sed -e "s|@VERSION@|${version}|g" \
+    -e "s|@SHA256_ARM64@|${arm64}|" \
+    -e "s|@SHA256_AMD64@|${amd64}|" \
+    "$template" > "$out"
+
+echo "wrote $out (v${version})"
+echo "  arm64 ${arm64}"
+echo "  amd64 ${amd64}"

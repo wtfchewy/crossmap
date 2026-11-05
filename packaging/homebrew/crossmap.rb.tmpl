@@ -1,20 +1,33 @@
 class Crossmap < Formula
   desc "Use an iPhone plugged into another Mac, across networks"
   homepage "https://github.com/wtfchewy/crossmap"
-  url "@URL@"
-  sha256 "@SHA256@"
+  version "@VERSION@"
   license "BSD-3-Clause"
-  head "https://github.com/wtfchewy/crossmap.git", branch: "main"
 
-  depends_on "go" => :build
-  depends_on :macos
+  # Prebuilt binaries, so installing needs neither a Go toolchain nor a
+  # Command Line Tools version that matches the running macOS.
+  on_macos do
+    on_arm do
+      url "https://github.com/wtfchewy/crossmap/releases/download/v@VERSION@/crossmap_@VERSION@_darwin_arm64.tar.gz"
+      sha256 "@SHA256_ARM64@"
+    end
+    on_intel do
+      url "https://github.com/wtfchewy/crossmap/releases/download/v@VERSION@/crossmap_@VERSION@_darwin_amd64.tar.gz"
+      sha256 "@SHA256_AMD64@"
+    end
+  end
+
+  head do
+    url "https://github.com/wtfchewy/crossmap.git", branch: "main"
+    depends_on "go" => :build
+  end
 
   def install
-    ldflags = %W[
-      -s -w
-      -X main.version=#{version}
-    ]
-    system "go", "build", *std_go_args(ldflags: ldflags), "./cmd/crossmap"
+    if build.head?
+      system "go", "build", *std_go_args(ldflags: "-s -w -X main.version=#{version}"), "./cmd/crossmap"
+    else
+      bin.install "crossmap"
+    end
   end
 
   def caveats
@@ -23,8 +36,6 @@ class Crossmap < Formula
         crossmap init
 
       On the Mac the iPhone is plugged into:
-        brew services start crossmap-agent
-      or run it directly:
         crossmap agent
 
       On the Mac with Xcode, for libimobiledevice tools:
