@@ -12,13 +12,13 @@ jobs:
   goreleaser:
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
-      - uses: goreleaser/goreleaser-action@v6
+      - uses: goreleaser/goreleaser-action@v7
         with:
           version: "~> v2"
           args: release --clean
@@ -27,7 +27,7 @@ jobs:
 
       - name: render the Homebrew formula
         run: ./scripts/render-formula.sh "${GITHUB_REF_NAME#v}" dist
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: homebrew-formula
           path: dist/crossmap.rb
